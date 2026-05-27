@@ -54,9 +54,17 @@ def add_bookmarks(input_pdf, output_pdf):
                 if len(heading) < 150:
                     # Avoid duplicates of exact same text on the same page
                     if not any(item[1] == heading and item[2] == page_num + 1 for item in toc):
-                        toc.append([block_level, heading, page_num + 1])
-                        safe_heading = heading.encode('ascii', 'replace').decode('ascii')
-                        print(f"  -> Found (Level {block_level}): '{safe_heading}' on Page {page_num + 1}")
+                        # Combine Level 1 headers on the same page
+                        if block_level == 1 and len(toc) > 0 and toc[-1][0] == 1 and toc[-1][2] == page_num + 1:
+                            # Use a colon or dash for separation
+                            separator = ": " if "Chapter" in toc[-1][1] or "Part" in toc[-1][1] else " "
+                            toc[-1][1] += separator + heading
+                            safe_heading = toc[-1][1].encode('ascii', 'replace').decode('ascii')
+                            print(f"  -> Merged (Level 1): '{safe_heading}' on Page {page_num + 1}")
+                        else:
+                            toc.append([block_level, heading, page_num + 1])
+                            safe_heading = heading.encode('ascii', 'replace').decode('ascii')
+                            print(f"  -> Found (Level {block_level}): '{safe_heading}' on Page {page_num + 1}")
                     
     if toc:
         # PyMuPDF requires the first TOC item to be level 1, and no level jumps > 1
