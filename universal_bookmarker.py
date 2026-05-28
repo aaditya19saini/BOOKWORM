@@ -7,8 +7,59 @@ from collections import Counter
 # Set stdout to UTF-8 to prevent UnicodeEncodeError in PowerShell
 sys.stdout.reconfigure(encoding='utf-8')
 
+def preprocess_toc_lines(text):
+    """
+    Cleans and joins TOC lines that were split across line breaks in the PDF text flow.
+    E.g. joins:
+      Line 1: "1.1"
+      Line 2: "Who Should Read This Book?"
+    Into:
+      "1.1 Who Should Read This Book?"
+    """
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    cleaned_lines = []
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        
+        # Replace multiple whitespace/tabs with single space
+        line = re.sub(r'\s+', ' ', line)
+        
+        # Check if line is just a chapter/section/subsection number, e.g. "1", "1.1", "1.1.1"
+        is_num = re.match(r'^\d+(\.\d+){0,2}$', line) or re.match(r'^(?:Chapter|Part)\s+\d+$', line, re.IGNORECASE)
+        
+        if is_num and i + 1 < len(lines):
+            next_line = lines[i + 1].strip()
+            # If the next line is a page number (just digits) or a section number, don't merge!
+            is_next_num = re.match(r'^\d+(\.\d+){0,2}$', next_line) or re.match(r'^(?:Chapter|Part)\s+\d+$', next_line, re.IGNORECASE)
+            
+            if not is_next_num:
+                # Merge them!
+                merged_line = f"{line} {next_line}"
+                cleaned_lines.append(merged_line)
+                i += 2
+                continue
+                
+        cleaned_lines.append(line)
+        i += 1
+        
+    return cleaned_lines
+
+def clean_heading_title(title):
+    """
+    Removes dot leaders and trailing page numbers from TOC entry titles.
+    E.g. cleans "Who Should Read This Book? . . . . . 8" into "Who Should Read This Book?"
+    """
+    # Remove dot leaders followed by page numbers
+    title = re.sub(r'[\.\s_·•-]{3,}\d+\s*$', '', title)
+    title = re.sub(r'\s*\.\s*\.\s*\.\s*.*$', '', title)
+    title = re.sub(r'\s*\.\s+\.\s+.*$', '', title)
+    # Remove trailing page numbers if separated by whitespace
+    title = re.sub(r'\s+\d+\s*$', '', title)
+    return title.strip()
+
 def find_toc_range(doc):
-    # We search for words indicating table of contents
     toc_indicators = ["table of contents", "contents", "table of content", "index of contents"]
     toc_start = None
     
@@ -36,11 +87,11 @@ def find_toc_range(doc):
         page = doc[page_idx]
         text = page.get_text()
         
+        cleaned_lines = preprocess_toc_lines(text)
+        
         # Count lines matching chapter/section patterns
         match_count = 0
-        for line in text.split('\n'):
-            line_clean = line.strip()
-            line_clean = re.sub(r'\s+', ' ', line_clean)
+        for line_clean in cleaned_lines:
             if (re.match(r'^(\d+)\.\s+(.+)$', line_clean) or 
                 re.match(r'^(\d+)\.(\d+)\s+(.+)$', line_clean) or
                 re.match(r'^(\d+)\.(\d+)\.(\d+)\s+(.+)$', line_clean) or
@@ -58,8 +109,6 @@ def find_toc_range(doc):
     return toc_start, toc_end
 
 def parse_toc_entries(doc, start_idx, end_idx):
-    # Track the order of all items to build a robust sequential list of target headings
-    # Each item: {"level": int, "num_str": str, "title": str, "ch_num": int/None}
     toc_items = []
     
     special_patterns = ["preface", "acknowledgements", "acknowledgments", "notation", "references", "bibliography", "index", "website"]
@@ -68,13 +117,9 @@ def parse_toc_entries(doc, start_idx, end_idx):
         page = doc[page_idx]
         text = page.get_text()
         
-        for line in text.split('\n'):
-            line_clean = line.strip()
-            # Clean spaces/tabs
-            line_clean = re.sub(r'\s+', ' ', line_clean)
-            if not line_clean:
-                continue
-                
+        cleaned_lines = preprocess_toc_lines(text)
+        
+        for line_clean in cleaned_lines:
             # Check for special pages
             matched_special = False
             for spec in special_patterns:
@@ -94,7 +139,7 @@ def parse_toc_entries(doc, start_idx, end_idx):
             subsec_match = re.match(r'^(\d+)\.(\d+)\.(\d+)\s+(.+)$', line_clean)
             if subsec_match:
                 num_str = f"{subsec_match.group(1)}.{subsec_match.group(2)}.{subsec_match.group(3)}"
-                title = subsec_match.group(4).strip()
+                title = clean_heading_title(subsec_match.group(4))
                 toc_items.append({
                     "level": 3,
                     "type": "subsection",
@@ -108,7 +153,7 @@ def parse_toc_entries(doc, start_idx, end_idx):
             sec_match = re.match(r'^(\d+)\.(\d+)\s+(.+)$', line_clean)
             if sec_match:
                 num_str = f"{sec_match.group(1)}.{sec_match.group(2)}"
-                title = sec_match.group(3).strip()
+                title = clean_heading_title(sec_match.group(3))
                 toc_items.append({
                     "level": 2,
                     "type": "section",
@@ -122,7 +167,7 @@ def parse_toc_entries(doc, start_idx, end_idx):
             chapter_num_match = re.match(r'^(\d+)\.\s+(.+)$', line_clean)
             if chapter_num_match:
                 ch_num = int(chapter_num_match.group(1))
-                title = chapter_num_match.group(2).strip()
+                title = clean_heading_title(chapter_num_match.group(2))
                 toc_items.append({
                     "level": 1,
                     "type": "chapter",
@@ -136,7 +181,7 @@ def parse_toc_entries(doc, start_idx, end_idx):
             chapter_word_match = re.match(r'^(?:Chapter|Part)\s+(\d+)\b[:\s.-]*(.+)$', line_clean, re.IGNORECASE)
             if chapter_word_match:
                 ch_num = int(chapter_word_match.group(1))
-                title = chapter_word_match.group(2).strip()
+                title = clean_heading_title(chapter_word_match.group(2))
                 toc_items.append({
                     "level": 1,
                     "type": "chapter",
@@ -170,7 +215,6 @@ def find_body_text_size(doc, start_page):
 def probe_heading_signatures(doc, toc_items, start_search_page, body_text_size):
     signatures = {1: None, 2: None, 3: None}
     
-    # We want to find style signatures for Level 2 (Section) and Level 3 (Subsection)
     candidates_2 = [item for item in toc_items if item["level"] == 2][:5]
     candidates_3 = [item for item in toc_items if item["level"] == 3][:5]
     candidates_1 = [item for item in toc_items if item["level"] == 1][:5]
@@ -414,9 +458,16 @@ def map_headings_to_pages(doc, toc_items, start_search_page, signatures, body_te
                 final_toc.append([item["level"], title, first_sec_page])
                 print(f"  -> Pending Chapter {ch_num} resolved to Page {first_sec_page} (from Section {ch_num}.1)")
             else:
-                fallback_page = start_search_page + 1
-                final_toc.append([item["level"], title, fallback_page])
-                print(f"  [Warning] Chapter {ch_num} first section not found! Defaulting to Page {fallback_page}")
+                # If X.1 is not found, let's search if X.2 exists
+                sec_keys = [k for k in resolved_pages.keys() if k.startswith(f"{ch_num}.")]
+                if sec_keys:
+                    min_sec_page = min(resolved_pages[k] for k in sec_keys)
+                    final_toc.append([item["level"], title, min_sec_page])
+                    print(f"  -> Pending Chapter {ch_num} resolved to Page {min_sec_page} (from first available Section)")
+                else:
+                    fallback_page = start_search_page + 1
+                    final_toc.append([item["level"], title, fallback_page])
+                    print(f"  [Warning] Chapter {ch_num} first section not found! Defaulting to Page {fallback_page}")
         else:
             final_toc.append(item)
             
