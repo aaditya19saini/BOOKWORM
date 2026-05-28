@@ -83,7 +83,7 @@ def add_bookmarks(input_pdf, output_pdf):
     doc.close()
 
 if __name__ == "__main__":
-    input_file = "Deep+Learning+Ian+Goodfellow.pdf"
-    output_file = "Deep+Learning+Ian+Goodfellow_bookmarked.pdf"
+    input_file = "4f91b8db-dae0-4737-8194-94ad5a70b1f8.pdf"
+    output_file = "DSA.pdf"
     
     add_bookmarks(input_file, output_file)
