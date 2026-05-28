@@ -4,33 +4,57 @@ import re
 import sys
 from collections import Counter
 
+# Set stdout to UTF-8 to prevent UnicodeEncodeError in PowerShell
+sys.stdout.reconfigure(encoding='utf-8')
+
 def find_toc_range(doc):
-    # Scan the first 30 pages
-    toc_start = None
-    toc_end = None
-    
     # We search for words indicating table of contents
     toc_indicators = ["table of contents", "contents", "table of content", "index of contents"]
+    toc_start = None
     
+    # 1. Discover where the TOC starts
     for page_idx in range(min(30, len(doc))):
         page = doc[page_idx]
         text = page.get_text().lower()
         
         # Check if the page contains a TOC indicator
         if any(ind in text for ind in toc_indicators):
-            if toc_start is None:
-                toc_start = page_idx
-                print(f"  -> Detected TOC starting on Page {page_idx + 1}")
-            toc_end = page_idx
+            toc_start = page_idx
+            print(f"  -> Detected TOC starting on Page {page_idx + 1}")
+            break
             
     if toc_start is None:
         # Fallback to standard range
         toc_start = 6
         toc_end = 13
         print(f"  -> TOC indicator not found. Defaulting to index [{toc_start}:{toc_end}] (Page 7-14)")
-    else:
-        print(f"  -> Detected TOC ending on Page {toc_end + 1}")
+        return toc_start, toc_end
         
+    # 2. Discover where the TOC ends by scanning consecutive pages
+    toc_end = toc_start
+    for page_idx in range(toc_start, min(toc_start + 15, len(doc))):
+        page = doc[page_idx]
+        text = page.get_text()
+        
+        # Count lines matching chapter/section patterns
+        match_count = 0
+        for line in text.split('\n'):
+            line_clean = line.strip()
+            line_clean = re.sub(r'\s+', ' ', line_clean)
+            if (re.match(r'^(\d+)\.\s+(.+)$', line_clean) or 
+                re.match(r'^(\d+)\.(\d+)\s+(.+)$', line_clean) or
+                re.match(r'^(\d+)\.(\d+)\.(\d+)\s+(.+)$', line_clean) or
+                re.match(r'^(?:Chapter|Part)\s+(\d+)\b', line_clean, re.IGNORECASE)):
+                match_count += 1
+                
+        # If the page contains a healthy density of TOC entries (at least 3), it is a TOC page
+        if page_idx == toc_start or match_count >= 3:
+            toc_end = page_idx
+        else:
+            # Reached normal content or end of TOC
+            break
+            
+    print(f"  -> Detected TOC ending on Page {toc_end + 1}")
     return toc_start, toc_end
 
 def parse_toc_entries(doc, start_idx, end_idx):
