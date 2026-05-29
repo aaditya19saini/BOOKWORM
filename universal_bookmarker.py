@@ -510,10 +510,21 @@ def run_universal_bookmarker(input_pdf, output_pdf):
     print(f"\nSuccess! Successfully bookmarked '{output_pdf}' with {len(final_toc)} items.")
 
 if __name__ == "__main__":
-    # Test case 1: DSA book
-    if os.path.exists("4f91b8db-dae0-4737-8194-94ad5a70b1f8.pdf"):
-        run_universal_bookmarker("4f91b8db-dae0-4737-8194-94ad5a70b1f8.pdf", "DSA_universal.pdf")
-        
-    # Test case 2: Deep Learning book
-    if os.path.exists("Deep+Learning+Ian+Goodfellow.pdf"):
-        run_universal_bookmarker("Deep+Learning+Ian+Goodfellow.pdf", "Deep_Learning_universal.pdf")
+    if len(sys.argv) > 2:
+        input_file = sys.argv[1]
+        output_file = sys.argv[2]
+    elif len(sys.argv) == 2:
+        input_file = sys.argv[1]
+        base, ext = os.path.splitext(input_file)
+        output_file = f"{base}_bookmarked{ext}"
+    else:
+        input_file = input("Enter the path to the input PDF: ").strip().strip('"').strip("'")
+        if not input_file:
+            print("Error: No input file specified.")
+            sys.exit(1)
+        output_file = input("Enter the path for the bookmarked output PDF (leave empty for default): ").strip().strip('"').strip("'")
+        if not output_file:
+            base, ext = os.path.splitext(input_file)
+            output_file = f"{base}_bookmarked{ext}"
+            
+    run_universal_bookmarker(input_file, output_file)
