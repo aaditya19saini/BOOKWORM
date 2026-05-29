@@ -57,6 +57,10 @@ def clean_heading_title(title):
     title = re.sub(r'\s*\.\s+\.\s+.*$', '', title)
     # Remove trailing page numbers if separated by whitespace
     title = re.sub(r'\s+\d+\s*$', '', title)
+    
+    # Replace 'Omega-Q' with 'Omega-Ω' (Greek uppercase letter Omega) to fix font artifact
+    title = title.replace("Omega-Q", "Omega-Ω")
+    
     return title.strip()
 
 def find_toc_range(doc):

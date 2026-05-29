@@ -3,6 +3,9 @@ import os
 import re
 import sys
 
+# Set stdout to UTF-8 to prevent UnicodeEncodeError in PowerShell/CMD on Windows
+sys.stdout.reconfigure(encoding='utf-8')
+
 def generate_dsa_bookmarks(input_pdf, output_pdf):
     if not os.path.exists(input_pdf):
         print(f"Error: Could not find '{input_pdf}'")
@@ -71,6 +74,9 @@ def generate_dsa_bookmarks(input_pdf, output_pdf):
                 ch_num = int(section_match.group(1))
                 sec_sub = int(section_match.group(2))
                 sec_title = section_match.group(3).strip()
+                
+                # Replace 'Omega-Q' with 'Omega-Ω' (Greek uppercase letter Omega) to fix font artifact
+                sec_title = sec_title.replace("Omega-Q", "Omega-Ω")
                 
                 if ch_num in sections:
                     sections[ch_num].append({
